@@ -78,8 +78,9 @@ by side without interfering.
    members stay selectable with a note. When all observed members are at their
    limit and every candidate is observed, return `exhausted` with the earliest
    reset so Paperclip's own wait/resume works.
-6. Explanation: the `skipped` map is always populated and a plugin page lists
-   the decision history with score components.
+6. Explanation: every non-pinned decision carries a `skipped` map for the
+   members it passed over, and a plugin page lists the decision history with the
+   reasons. Pinned decisions carry no skips because there is nothing to choose.
 
 ## Non-goals
 
@@ -213,9 +214,10 @@ feature to a later version rather than inferring.
 
 - `skipped` text in the pool UI (host renders it today).
 - Plugin page: last 50 decisions, each with task link, chosen member, score
-  components, and skip reasons; plus a member table with the last usage
-  snapshot and failure memory.
-- Activity log entry via `ctx.activity` for every decision, linking the task.
+  components, and skip reasons. (A per-member usage/failure table was in the
+  original sketch; v0.1 ships the decision list, and that table is a follow-up.)
+- No activity row per decision: it would flood the company feed. Activity is
+  reserved for plugin errors.
 
 ### Configuration (company-scoped)
 

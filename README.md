@@ -17,6 +17,7 @@ Every decision appears on a Smart Router page in Paperclip: the chosen member, t
 
 - It does not reroute a task that Paperclip has already pinned to a member. Pinning is the host's session-continuity rule, and the plugin respects it. If a pinned member keeps failing, the page tells you; unpin or reassign the task.
 - It cannot switch models inside an account. A pool member is one account with one model, so choosing a model means choosing the member that has it.
+- The model tier floor is a preference, not a veto. When no member reaches the floor for a task (for example, a pool made only of models the plugin does not know), the router still picks the nearest tier and records the deviation instead of failing the task.
 - Paperclip only probed usage for pools in `usage_aware` mode with a responsible user on the run. When usage is not observed, the router falls back to task tier and fairness, and says so on the page. It never reads missing usage as healthy, and never as exhausted.
 
 ## Requirements
