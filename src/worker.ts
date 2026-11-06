@@ -15,9 +15,8 @@ const plugin = definePlugin({
     host = new RouterHost(ctx)
     ctx.data.register("decisions", async (params) => {
       const companyId = typeof params.companyId === "string" ? params.companyId : undefined
-      if (!companyId) return { decisions: [], members: [] }
-      await host!.ensureLoaded(companyId)
-      return host!.data(companyId)
+      if (!companyId) return { decisions: [], members: [], memoryMinutes: 30, repaired: 0 }
+      return host!.pageData(companyId)
     })
     ctx.events.on("agent.run.failed", async (event) => {
       const payload = event.payload as Record<string, unknown>

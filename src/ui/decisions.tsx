@@ -1,23 +1,28 @@
 import type { DecisionRecord } from "../core/store.js"
+import type { MemberState } from "../core/members.js"
 
 export interface DecisionsPayload {
   readonly decisions: ReadonlyArray<DecisionRecord>
-  readonly members: ReadonlyArray<{ memberId: string; chosen: boolean }>
+  readonly members: ReadonlyArray<MemberState>
+  readonly memoryMinutes?: number | undefined
+  readonly repaired?: number | undefined
 }
 
 /**
  * Design notes.
  *
  * Paperclip is themeable and light by default, and a plugin page renders inside
- * its own shell. The first version hardcoded a dark palette, which made the page
- * white-on-white in the default theme. Everything here reads the host's own CSS
- * tokens with a fallback, so the page follows light, dark, and any custom theme
- * without knowing which is active.
+ * its own shell. Everything here reads the host's own CSS tokens with a fallback,
+ * so the page follows light, dark, and any custom theme without knowing which is
+ * active.
  *
- * The visual language is Paperclip's: 13px text, grey token colours, 6px radii,
- * a muted uppercase label, and one accent used only for the decision itself. The
- * product's own identity appears in three places and nowhere else: the brand mark
- * in the header, the wordmark, and the gradient hairline under it.
+ * The visual language is Paperclip's: 13px text, grey token colours, 6px radii, a
+ * muted uppercase label, one accent for the chosen member. Smart Router's own
+ * identity appears in three places and nowhere else: the mark, the wordmark, and
+ * the gradient hairline under it.
+ *
+ * Order on the page follows the questions a person actually asks: which members
+ * are benched right now, then what was decided and why.
  */
 
 const TOKEN = {
@@ -29,18 +34,17 @@ const TOKEN = {
   faint: "var(--v2-text-text-faint, #85858f)",
   border: "var(--v2-border-border-muted, rgba(0,0,0,0.08))",
   strong: "var(--v2-border-border-strong, rgba(0,0,0,0.2))",
-  accent: "var(--v2-background-bg-accent, #2f6fed)",
   good: "var(--v2-state-fg-success, #1f7a45)",
   warn: "var(--v2-state-fg-warning, #8a6100)",
   mono: "ui-monospace, SFMono-Regular, Menlo, monospace",
 } as const
 
-/** Smart Router's own accent, used only on the mark and the hairline. */
 const BRAND = "linear-gradient(90deg, #0f766e, #0891b2)"
 
-const shortTime = (iso: string) => {
+const shortTime = (iso: string | undefined) => {
+  if (!iso) return ""
   const date = new Date(iso)
-  if (!Number.isFinite(date.getTime())) return iso
+  if (!Number.isFinite(date.getTime())) return ""
   return date.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
 }
 
@@ -67,19 +71,35 @@ function Mark({ size = 22 }: { size?: number }) {
   )
 }
 
+function Pill({ tone, children }: { tone: "good" | "warn" | "quiet"; children: React.ReactNode }) {
+  const color = tone === "good" ? TOKEN.good : tone === "warn" ? TOKEN.warn : TOKEN.muted
+  return (
+    <span
+      style={{
+        fontSize: 10,
+        fontWeight: 700,
+        letterSpacing: "0.06em",
+        textTransform: "uppercase",
+        color,
+        border: `1px solid ${TOKEN.border}`,
+        borderRadius: 999,
+        padding: "1px 7px",
+        background: TOKEN.raised,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {children}
+    </span>
+  )
+}
+
 function Confidence({ tier, confidence }: { tier: 1 | 2 | 3; confidence: number }) {
   const firm = confidence >= 0.7
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: TOKEN.muted }}>
       <span
         aria-hidden="true"
-        style={{
-          width: 6,
-          height: 6,
-          borderRadius: 999,
-          background: firm ? TOKEN.good : TOKEN.warn,
-          flexShrink: 0,
-        }}
+        style={{ width: 6, height: 6, borderRadius: 999, background: firm ? TOKEN.good : TOKEN.warn, flexShrink: 0 }}
       />
       tier {tier}
       {firm ? "" : " · borderline"}
@@ -87,10 +107,71 @@ function Confidence({ tier, confidence }: { tier: 1 | 2 | 3; confidence: number 
   )
 }
 
-/**
- * One decision. The chosen member is the headline; the reasons other members
- * lost sit underneath, because that is the question a person actually asks.
- */
+/** Current standing of every member the router knows about. */
+function MemberTable({ members }: { members: ReadonlyArray<MemberState> }) {
+  if (members.length === 0) return null
+  return (
+    <section style={{ marginBottom: 22 }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 }}>
+        <span style={label}>Members</span>
+        <span style={{ fontSize: 12, color: TOKEN.faint }}>
+          {members.filter((member) => member.benched).length} held back
+        </span>
+      </div>
+      <div style={{ border: `1px solid ${TOKEN.border}`, borderRadius: 8, overflow: "hidden" }}>
+        {members.map((member, index) => (
+          <div
+            key={member.memberId}
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr max-content",
+              gap: 12,
+              alignItems: "center",
+              padding: "10px 14px",
+              background: TOKEN.bg,
+              borderTop: index === 0 ? "none" : `1px solid ${TOKEN.border}`,
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <div
+                style={{
+                  fontFamily: TOKEN.mono,
+                  fontSize: 12.5,
+                  color: TOKEN.text,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+                title={member.memberId}
+              >
+                {member.label}
+              </div>
+              <div style={{ fontSize: 11.5, color: TOKEN.faint, marginTop: 2 }}>
+                {member.chosenCount === 0
+                  ? "never chosen yet"
+                  : `${member.chosenCount} ${member.chosenCount === 1 ? "decision" : "decisions"}${
+                      member.lastChosenAt ? `, last ${shortTime(member.lastChosenAt)}` : ""
+                    }`}
+                {member.benched && member.benchedUntil ? ` · free again ${shortTime(member.benchedUntil)}` : ""}
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              {member.benched ? <Pill tone="warn">held back</Pill> : <Pill tone="good">ready</Pill>}
+            </div>
+          </div>
+        ))}
+      </div>
+      {members.some((member) => member.benched) ? (
+        <p style={{ fontSize: 11.5, color: TOKEN.faint, margin: "8px 0 0", lineHeight: 1.5 }}>
+          A held-back member rejected a request deterministically. It is out of new tasks until the window passes,
+          then it is eligible again without any action.
+        </p>
+      ) : null}
+    </section>
+  )
+}
+
+/** One decision. The chosen member is the headline; passed-over members follow. */
 function DecisionCard({ decision }: { decision: DecisionRecord }) {
   const skips = Object.entries(decision.skipped)
   return (
@@ -115,25 +196,11 @@ function DecisionCard({ decision }: { decision: DecisionRecord }) {
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
             }}
+            title={decision.chosen ?? undefined}
           >
             {decision.chosenLabel ?? decision.chosen ?? "no eligible member"}
           </span>
-          {decision.chosen ? (
-            <span
-              style={{
-                fontSize: 10,
-                fontWeight: 700,
-                letterSpacing: "0.06em",
-                color: TOKEN.good,
-                border: `1px solid ${TOKEN.border}`,
-                borderRadius: 999,
-                padding: "1px 7px",
-                background: TOKEN.raised,
-              }}
-            >
-              CHOSEN
-            </span>
-          ) : null}
+          {decision.chosen ? <Pill tone="good">chosen</Pill> : null}
         </span>
         <span style={{ fontSize: 12, color: TOKEN.faint, fontVariantNumeric: "tabular-nums" }}>
           {shortTime(decision.at)}
@@ -144,7 +211,15 @@ function DecisionCard({ decision }: { decision: DecisionRecord }) {
       <div style={{ display: "flex", gap: 14, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
         <Confidence tier={decision.tier} confidence={decision.confidence} />
         <span
-          style={{ fontSize: 12, color: TOKEN.faint, fontFamily: TOKEN.mono, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "42ch" }}
+          style={{
+            fontSize: 12,
+            color: TOKEN.faint,
+            fontFamily: TOKEN.mono,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            maxWidth: "42ch",
+          }}
           title={decision.taskKey}
         >
           {decision.taskKey}
@@ -193,7 +268,10 @@ function DecisionCard({ decision }: { decision: DecisionRecord }) {
           <div style={{ ...label, marginBottom: 6 }}>Passed over</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
             {skips.map(([memberId, reason]) => (
-              <div key={memberId} style={{ display: "grid", gridTemplateColumns: "max-content 1fr", gap: 10, alignItems: "baseline" }}>
+              <div
+                key={memberId}
+                style={{ display: "grid", gridTemplateColumns: "max-content 1fr", gap: 10, alignItems: "baseline" }}
+              >
                 <span
                   style={{ fontFamily: TOKEN.mono, fontSize: 11.5, color: TOKEN.muted, whiteSpace: "nowrap" }}
                   title={memberId}
@@ -210,13 +288,9 @@ function DecisionCard({ decision }: { decision: DecisionRecord }) {
   )
 }
 
-/**
- * The explanation surface. Paperclip OSS does not render the router's skipped
- * reasons anywhere, so this page is where a person can see why a pool member
- * won, and why the others did not. Server-renderable for tests; no host imports.
- */
 export function DecisionsView({ data }: { data: DecisionsPayload | undefined }) {
   const decisions = data?.decisions ?? []
+  const members = data?.members ?? []
 
   return (
     <section
@@ -238,6 +312,8 @@ export function DecisionsView({ data }: { data: DecisionsPayload | undefined }) 
       </header>
       <div style={{ height: 2, borderRadius: 2, background: BRAND, width: 44, marginTop: 14, marginBottom: 18 }} />
 
+      <MemberTable members={members} />
+
       {decisions.length === 0 ? (
         <div
           style={{
@@ -256,9 +332,10 @@ export function DecisionsView({ data }: { data: DecisionsPayload | undefined }) 
       ) : (
         <>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
-            <span style={{ ...label }}>Recent decisions</span>
+            <span style={label}>Recent decisions</span>
             <span style={{ fontSize: 12, color: TOKEN.faint }}>
               {decisions.length} {decisions.length === 1 ? "decision" : "decisions"}, newest first
+              {data?.repaired ? ` · ${data.repaired} repaired from an older format` : ""}
             </span>
           </div>
           <ul style={{ display: "flex", flexDirection: "column", gap: 10, margin: 0, padding: 0 }}>

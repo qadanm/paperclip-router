@@ -23,6 +23,24 @@ describe("decisions page", () => {
     expect(html).toContain("weekly window 82% used")
   })
 
+  it("shows held-back members above the decisions", () => {
+    const withMember = {
+      decisions: [decision],
+      members: [
+        { memberId: "m1", label: "claude-sonnet-5-5 · codex", chosenCount: 3, lastChosenAt: "2026-11-06T12:00:00Z", benched: true, benchReason: "rejected a request deterministically, held back for new tasks", benchedUntil: "2026-11-06T12:30:00Z" },
+      ],
+      memoryMinutes: 30,
+    }
+    const html = renderToStaticMarkup(<DecisionsView data={withMember} />)
+    expect(html).toContain("held back")
+    expect(html).toContain("claude-sonnet-5-5 · codex")
+  })
+
+  it("says how many older records were repaired", () => {
+    const html = renderToStaticMarkup(<DecisionsView data={{ decisions: [decision], members: [], repaired: 3 }} />)
+    expect(html).toContain("3 repaired from an older format")
+  })
+
   it("explains an empty history", () => {
     const html = renderToStaticMarkup(<DecisionsView data={{ decisions: [], members: [] }} />)
     expect(html).toContain("No decisions yet")

@@ -1,6 +1,6 @@
 {
   "name": "@qadanm/paperclip-router",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Subscription-aware, task-aware connection-pool routing for Paperclip: picks the right account and model per task, from usage windows, task class, and failure memory.",
   "type": "module",
   "license": "MIT",

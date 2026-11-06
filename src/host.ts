@@ -2,6 +2,8 @@ import type { PluginContext } from "@paperclipai/plugin-sdk"
 import { classifyTask, type TaskClass } from "./core/classify.js"
 import { decideRoute, type RouteRequest, type RouteResult } from "./core/decide.js"
 import { classifyRunError } from "./core/failures.js"
+import { memberStates, type MemberState } from "./core/members.js"
+import { repairDecisions } from "./core/repair.js"
 import type { Candidate, RankingPolicy } from "./core/score.js"
 import {
   DECISION_CAP,
@@ -295,12 +297,26 @@ export class RouterHost {
     }
   }
 
-  data(companyId: string): { decisions: DecisionRecord[]; members: Array<{ memberId: string; chosen: boolean }> } {
-    const decisions = (this.decisions.get(companyId) ?? []).slice(0, 50)
-    const members = [...new Set(decisions.map((entry) => entry.chosen).filter((id): id is string => id !== null))].map((memberId) => ({
-      memberId,
-      chosen: true,
-    }))
-    return { decisions, members }
+  /**
+   * Everything the page renders: the retained decisions (repaired for display),
+   * current member standing, and the window the failure memory is using so the
+   * page can say when a bench expires.
+   */
+  async pageData(companyId: string): Promise<{
+    decisions: DecisionRecord[]
+    members: MemberState[]
+    memoryMinutes: number
+    repaired: number
+  }> {
+    await this.ensureLoaded(companyId)
+    const config = await this.config(companyId)
+    const { decisions, repaired } = repairDecisions((this.decisions.get(companyId) ?? []).slice(0, 50))
+    const members = memberStates({
+      decisions,
+      failures: this.failures.get(companyId) ?? [],
+      now: new Date(),
+      memoryMinutes: config.memoryMinutes,
+    })
+    return { decisions, members, memoryMinutes: config.memoryMinutes, repaired }
   }
 }

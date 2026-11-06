@@ -18,7 +18,13 @@ Paperclip ships rotation. This replaces it with a decision.
 
 ## What it writes down
 
-Every decision lands on a **Smart Router** page inside Paperclip: the member that was chosen with its model, the task tier, how confident that tier was, and a plain sentence for every member that was passed over. Paperclip's own UI does not render a router's skip reasons, so the plugin carries its own page. It follows the host theme, light or dark.
+Every decision lands on a **Smart Router** page inside Paperclip:
+
+- **Members**, first, because that is the question a person actually asks. Each member's model, how many decisions it has served, when it last served one, and whether it is ready or held back right now, with the time it becomes eligible again.
+- **Decisions**, newest first. The member that was chosen with its model, the task tier and how confident that read was, a plain sentence for every member passed over, and any deviation worth stating.
+- **Repair.** Records written before this version added labels and confidence are enriched at read time from newer records, so the page never shows a raw id. Nothing in storage is rewritten.
+
+It follows the host theme, light or dark, by reading Paperclip's own CSS tokens.
 
 The page is the product. If the router cannot explain a choice, the choice should not be made.
 

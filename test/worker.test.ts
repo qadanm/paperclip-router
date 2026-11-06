@@ -62,7 +62,7 @@ describe("RouterHost route path", () => {
       },
     })
     expect(result).toMatchObject({ kind: "selected", memberId: "m2" })
-    expect(host.data("c1").decisions[0]?.mode).toBe("dry-run")
+    expect((await host.pageData("c1")).decisions[0]?.mode).toBe("dry-run")
   })
 })
 
