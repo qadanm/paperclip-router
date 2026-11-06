@@ -5,18 +5,30 @@
   "type": "module",
   "license": "MIT",
   "author": "Moe Qadan",
-  "repository": { "type": "git", "url": "git+https://github.com/qadanm/paperclip-router.git" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/qadanm/paperclip-router.git"
+  },
   "homepage": "https://github.com/qadanm/paperclip-router#readme",
-  "exports": { ".": "./dist/manifest.js" },
+  "exports": {
+    ".": "./dist/manifest.js"
+  },
   "paperclipPlugin": {
     "manifest": "./dist/manifest.js",
     "worker": "./dist/worker.js",
     "ui": "./dist/ui/"
   },
-  "files": ["dist", "README.md", "LICENSE", "docs"],
-  "engines": { "node": ">=24.11.0" },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "docs"
+  ],
+  "engines": {
+    "node": ">=24.11.0"
+  },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "node esbuild.config.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "check": "npm run typecheck && npm run test",
@@ -30,10 +42,13 @@
     "@types/node": "^24.0.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
+    "esbuild": "^0.27.7",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "typescript": "^5.9.0",
     "vitest": "^3.2.0"
   },
-  "peerDependencies": { "react": ">=18" }
+  "peerDependencies": {
+    "react": ">=18"
+  }
 }
