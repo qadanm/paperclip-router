@@ -14,7 +14,14 @@ export interface DecisionRecord {
   readonly taskKey: string
   readonly agentId: string
   readonly chosen: string | null
+  /** Human label for the chosen member: model and provider, not an opaque id. */
+  readonly chosenLabel?: string | undefined
+  /** Skip reasons keyed by member id, each with the member's human label. */
   readonly skipped: Record<string, string>
+  /** A deviation worth stating on the decision (for example, floor not met). */
+  readonly note?: string | undefined
+  /** Member id to "model · provider", so the page never shows a bare UUID. */
+  readonly labels?: Record<string, string> | undefined
   readonly signals: readonly string[]
   /** Task tier the decision used, and how firmly it was classified. */
   readonly tier: 1 | 2 | 3

@@ -206,12 +206,17 @@ export class RouterHost {
     const memory = activeFailures(this.failures.get(input.companyId) ?? [], now, config.memoryMinutes, input.taskKey)
     const result = decideRoute({ request: input.request, task, memory, policy: this.policy(config), now })
 
+    const labelFor = new Map(input.request.candidates.map((candidate) => [candidate.memberId, `${candidate.model} · ${candidate.provider}`]))
+    const chosenId = result.kind === "selected" ? result.memberId : null
     const record: DecisionRecord = {
       at: (Number.isFinite(now.getTime()) ? now : new Date()).toISOString(),
       companyId: input.companyId,
       taskKey: input.taskKey,
       agentId: input.agentId,
-      chosen: result.kind === "selected" ? result.memberId : null,
+      chosen: chosenId,
+      ...(chosenId ? { chosenLabel: labelFor.get(chosenId) } : {}),
+      labels: Object.fromEntries(labelFor),
+      ...(result.kind === "selected" && result.note ? { note: result.note } : {}),
       skipped: result.skipped,
       signals: task.signals,
       tier: task.tier,

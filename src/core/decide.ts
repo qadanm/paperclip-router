@@ -23,7 +23,7 @@ export interface RouteRequest {
 }
 
 export type RouteResult =
-  | { kind: "selected"; memberId: string; skipped: Record<string, string> }
+  | { kind: "selected"; memberId: string; skipped: Record<string, string>; note?: string | undefined }
   | { kind: "exhausted"; retryAt: string; skipped: Record<string, string> }
   | { kind: "unavailable"; skipped: Record<string, string> }
 
@@ -57,7 +57,7 @@ export const decideRoute = (input: DecideInput): RouteResult => {
       now,
     })
     if (ranked.chosen) {
-      return { kind: "selected", memberId: ranked.chosen, skipped: ranked.skipped }
+      return { kind: "selected", memberId: ranked.chosen, skipped: ranked.skipped, ...(ranked.note ? { note: ranked.note } : {}) }
     }
 
     const allBlocked = request.candidates.every(

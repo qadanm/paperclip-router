@@ -36,6 +36,8 @@ export interface RankingInput {
 
 export interface RankingResult {
   readonly chosen?: string
+  /** Why a below-floor member was used, when the floor could not be met. */
+  readonly note?: string
   readonly skipped: Record<string, string>
 }
 
@@ -136,9 +138,13 @@ export const rankCandidates = (input: RankingInput): RankingResult => {
   if (best) return { chosen: best.memberId, skipped }
   if (belowFloor) {
     // Every member was below the floor but none was blocked or benched: take the
-    // best available rather than failing the task. The reason stays on record.
-    skipped[belowFloor.memberId] = `no member reaches the tier ${floor} floor; used the nearest tier ${belowFloor.tier}`
-    return { chosen: belowFloor.memberId, skipped }
+    // best available rather than failing the task. This is a deviation note on
+    // the decision, not a skip: the member was chosen, not passed over.
+    return {
+      chosen: belowFloor.memberId,
+      note: `no member reaches the tier ${floor} floor; used the nearest tier ${belowFloor.tier}`,
+      skipped,
+    }
   }
   return { skipped }
 }
