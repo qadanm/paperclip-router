@@ -41,7 +41,7 @@ The page is the product. If the router cannot explain a choice, the choice shoul
 npx paperclipai plugin install @qadanm/paperclip-router
 ```
 
-Then: enable **AI connection routing** for the instance, open **Connectors**, add a **Smart Router pool**, and point an agent's **AI connection** at it. `docs/INSTALL.md` has the full path, including how to connect a gateway that is not in Paperclip's catalog.
+Then: enable **AI connection routing** for the instance, open **Connectors**, add a **Smart Router pool**, and point an agent's **AI connection** at it. **Smart Router** then appears in the company sidebar, next to Tasks and Projects. `docs/INSTALL.md` has the full path, including how to connect a gateway that is not in Paperclip's catalog.
 
 ## Gateways
 

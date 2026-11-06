@@ -32,7 +32,7 @@ Open the agent, set **AI connection** to the pool, and save. New tasks allocate 
 
 ## 5. Watch the first decisions
 
-Open **Smart Router** in the company navigation. Every allocation appears there with its reasons. If you want a comparison first, turn on **Dry run** in the plugin settings; decisions are recorded but Paperclip's reference rotation is used.
+**Smart Router** is now a row in the company sidebar, next to Tasks and Projects, with the router's mark. Open it there. (Its page is also reachable directly at `/:companyPrefix/router`.) Every allocation appears there with its reasons. If you want a comparison first, turn on **Dry run** in the plugin settings; decisions are recorded but Paperclip's reference rotation is used.
 
 ## API equivalents
 
