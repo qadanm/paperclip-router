@@ -1,29 +1,33 @@
 # Smart Router for Paperclip
 
-A connection-pool router plugin for [Paperclip](https://paperclip.ing). It replaces round-robin account allocation with a decision that accounts for the task and the allowance behind each account.
+A router plugin for [Paperclip](https://paperclip.ing). Paperclip gives an agent a **pool** of AI accounts. This plugin decides which account and model each new task gets, and writes down why.
 
-## What it does
+Paperclip ships rotation. This replaces it with a decision.
 
-Paperclip lets an agent use a pool of saved AI accounts. Each member of the pool is an account, a harness, and a model. This plugin picks the member for each new task using:
+## What it looks at
 
-- **Task class.** Mechanical work, docs, and tests go to the economy member; architecture, security, and hard debugging go to the member whose model meets the floor for that tier. Classification is local and deterministic, from the task title and description.
-- **Usage windows.** When Paperclip reports subscription usage for a member, allowance that resets soon is cheaper to spend, because the alternative is losing it. Allowance that resets late costs full price. Members with an observed limit reached are skipped, with the reason shown on the page.
-- **Recent rejections.** A member that produced a deterministic request rejection is held back for new tasks for thirty minutes. Outages and rate limits never count against a member.
-- **Fairness.** Ties rotate through the pool instead of pinning every task to the first account.
+**The task, classified locally.** A weighted read of the issue title and description, across scope, architecture, security, debugging, design, constraints and imperatives. No model call, no network, under a millisecond.
 
-Every decision appears on a Smart Router page in Paperclip: the chosen member, the task, and the reason each other member lost.
+**How firm that read is.** The classifier returns a confidence derived from how close the task sits to a tier boundary. `tier 2 · borderline` means the task could reasonably have been tier 1 or 3; the page says so instead of pretending certainty.
 
-## What it does not do
+**Allowance, when the host can see it.** Where Paperclip reports subscription usage for an account, allowance that resets soon is cheaper to spend, because the alternative is losing it. Where it cannot (generic gateways report no usage), the router says so and routes on tier, fairness and memory instead. It never reads missing usage as healthy, and never as exhausted.
 
-- It does not reroute a task that Paperclip has already pinned to a member. Pinning is the host's session-continuity rule, and the plugin respects it. If a pinned member keeps failing, the page tells you; unpin or reassign the task.
-- It cannot switch models inside an account. A pool member is one account with one model, so choosing a model means choosing the member that has it.
-- The model tier floor is a preference, not a veto. When no member reaches the floor for a task (for example, a pool made only of models the plugin does not know), the router still picks the nearest tier and records the deviation instead of failing the task.
-- Paperclip only probed usage for pools in `usage_aware` mode with a responsible user on the run. When usage is not observed, the router falls back to task tier and fairness, and says so on the page. It never reads missing usage as healthy, and never as exhausted.
+**Recent rejections.** A member that produced a deterministic request rejection is held back for new tasks on that task signature. Outages, rate limits, auth failures and billing failures never count against a member.
 
-## Requirements
+**Fairness.** Ties rotate through the pool rather than pinning every task to the first account.
 
-- Paperclip with the `enableAiConnectionRouters` experimental flag on.
-- Node 24.11 or newer on the Paperclip host.
+## What it writes down
+
+Every decision lands on a **Smart Router** page inside Paperclip: the member that was chosen with its model, the task tier, how confident that tier was, and a plain sentence for every member that was passed over. Paperclip's own UI does not render a router's skip reasons, so the plugin carries its own page. It follows the host theme, light or dark.
+
+The page is the product. If the router cannot explain a choice, the choice should not be made.
+
+## What it will not do
+
+- **Reroute a task Paperclip has already pinned.** Pinning is the host's session-continuity rule. If a pinned member keeps failing, the page tells you; unpin or reassign the task.
+- **Switch models inside an account.** A pool member is one account with one model. Choosing a model means choosing the member that has it.
+- **Fail a task to protect a rule.** When no member reaches the tier floor, the router uses the nearest and records the deviation. A pool with unknown model names still routes.
+- **Return `exhausted` on a guess.** That result defers the task until a reset time, so it is only returned when every candidate's usage was observed and blocked.
 
 ## Install
 
@@ -31,42 +35,33 @@ Every decision appears on a Smart Router page in Paperclip: the chosen member, t
 npx paperclipai plugin install @qadanm/paperclip-router
 ```
 
-Or install by package name from **Settings → Plugins**. Then:
+Then: enable **AI connection routing** for the instance, open **Connectors**, add a **Smart Router pool**, and point an agent's **AI connection** at it. `docs/INSTALL.md` has the full path, including how to connect a gateway that is not in Paperclip's catalog.
 
-1. Turn on AI connection routing for the instance.
-2. Open **Connectors** and add a **Smart Router pool**.
-3. Pick the accounts you want in the pool and set each member's model.
-4. Point an agent's **AI connection** at the pool.
+## Gateways
 
-`docs/INSTALL.md` has the exact steps and the API equivalents.
+Paperclip's connector catalog covers Anthropic, OpenAI, OpenRouter, Grok, Gemini and Bedrock. Any other OpenAI-compatible gateway (Command Code, OpenDesign, a self-hosted router) connects through **Chat Completions API**: base URL, protocol `chat`, bearer token. Those connections report no subscription usage, which the router states on the page.
 
 ## Configuration
 
-Settings → Plugins → Smart Router:
+Settings, per company:
 
 | Setting | Default | Meaning |
 |---|---|---|
-| Dry run | off | Record decisions but keep Paperclip's reference rotation. Use it for a week to compare. |
-| Safety margin | 85 | A member whose weakest window is past this percentage is skipped when another member can serve the task. |
+| Dry run | off | Record decisions, return Paperclip's reference rotation. Use it for a week to compare. |
+| Safety margin | 85 | Skip a member whose weakest window is past this when another has room. |
 | Hold a rejecting member back | 30 minutes | How long a deterministic rejection keeps a member out of new tasks. |
 | Weight for expiring allowance | 1 | How strongly a soon-to-reset window discounts a member. |
-| Model tier floor per task tier | 1 / 2 / 3 | Which model tier each task tier requires. |
+| Model tier floor | 1 / 2 / 3 | The model tier each task tier requires. |
 | Model tier overrides | seeded | Add tiers for models the plugin does not know. Unknown models are tier 2. |
 
 ## Development
 
 ```bash
-pnpm install
-pnpm test
-pnpm run build
+pnpm install && pnpm test && pnpm run build
 ```
 
-The decision core in `src/core/` has no host imports and is tested independently:
+The decision core in `src/core/` imports nothing from the host and is tested on its own: `classify` (weighted task tiers with confidence), `windows` (usage to a cost proxy or an honest unknown), `score` (ranking and every skip reason), `decide` (pinned, unavailable, exhausted), `store` and `failures` (bounded history and rejection memory).
 
-- `classify` maps a task to a kind and tier.
-- `windows` turns usage observations into a cost proxy or an honest unknown.
-- `score` ranks members and explains every skip.
-- `decide` applies the pinned, unavailable, and exhausted rules.
-- `store` and `failures` keep the bounded decision ring and rejection memory.
+The classifier and failure handling were designed against two MIT routers, [ClawRouter](https://github.com/BlockRunAI/ClawRouter) and [LLMRouter](https://github.com/ulab-uiuc/LLMRouter), taking their weighted-dimension scoring and confidence model, and deliberately fixing their flat simplicity penalty and retry-the-same-model behavior. `docs/DESIGN.md` records the reasoning.
 
 MIT.
