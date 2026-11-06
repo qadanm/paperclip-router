@@ -11,7 +11,7 @@ const policy: RankingPolicy = {
   modelTier: { "claude-haiku-5": 1, "claude-sonnet-5": 2, "claude-opus-5": 3 },
   expiryWeight: 1,
 }
-const task = (tier: 1 | 2 | 3, kind: TaskClass["kind"] = "feature"): TaskClass => ({ kind, tier, signals: [] })
+const task = (tier: 1 | 2 | 3, kind: TaskClass["kind"] = "feature"): TaskClass => ({ kind, tier, confidence: 0.9, signals: [] })
 const c = (o: Partial<Candidate> & { memberId: string }): Candidate => ({ model: "claude-sonnet-5", provider: "acpx", ...o })
 const blockedUsage = (): MemberUsage => ({
   status: "ok",
