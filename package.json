@@ -1,0 +1,39 @@
+{
+  "name": "@qadanm/paperclip-router",
+  "version": "0.1.0",
+  "description": "Subscription-aware, task-aware connection-pool routing for Paperclip: picks the right account and model per task, from usage windows, task class, and failure memory.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Moe Qadan",
+  "repository": { "type": "git", "url": "git+https://github.com/qadanm/paperclip-router.git" },
+  "homepage": "https://github.com/qadanm/paperclip-router#readme",
+  "exports": { ".": "./dist/manifest.js" },
+  "paperclipPlugin": {
+    "manifest": "./dist/manifest.js",
+    "worker": "./dist/worker.js",
+    "ui": "./dist/ui/"
+  },
+  "files": ["dist", "README.md", "LICENSE", "docs"],
+  "engines": { "node": ">=24.11.0" },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "check": "npm run typecheck && npm run test",
+    "prepublishOnly": "npm run check && npm run build"
+  },
+  "dependencies": {
+    "@paperclipai/plugin-sdk": "2026.1023.0",
+    "@paperclipai/shared": "2026.1023.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  },
+  "peerDependencies": { "react": ">=18" }
+}
