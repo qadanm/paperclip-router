@@ -59,9 +59,11 @@ describe("rankCandidates", () => {
       now,
     })
     // The floor is a preference, not a veto: a pool of unknown models must
-    // still route, with the deviation stated on the decision.
+    // still route. The deviation is a note on the decision, and the chosen
+    // member is never listed as passed over.
     expect(result.chosen).toBe("mystery")
-    expect(result.skipped.mystery).toContain("tier 2")
+    expect(result.note).toContain("tier 2")
+    expect(result.skipped.mystery).toBeUndefined()
   })
 
   it("rotates on ties instead of re-pinning the last member", () => {

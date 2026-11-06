@@ -87,7 +87,7 @@ export const rankCandidates = (input: RankingInput): RankingResult => {
   // The floor is a preference, not a veto: when no member reaches it, the task
   // still needs a model. Remembering the best below-floor member is what keeps
   // an unknown model from deadlocking a pool.
-  let belowFloor: { memberId: string; tier: number; score: number; order: number } | undefined
+  const belowFloor: Array<{ memberId: string; tier: number; score: number; order: number }> = []
 
   for (const candidate of candidates) {
     const tier = modelTierOf(candidate.model, policy)
@@ -118,9 +118,12 @@ export const rankCandidates = (input: RankingInput): RankingResult => {
       }
     }
     if (tier < floor) {
-      skipped[candidate.memberId] = `model tier ${tier} is below the tier ${floor} floor for ${task.kind} work`
+      // Below-floor members are candidates for the fallback, so they are recorded
+      // separately instead of in `skipped`. If a qualifying member exists, this
+      // list is rendered as "below the floor" reasons; if none does, the best of
+      // them is chosen and the deviation becomes a note on the decision.
       const orderIndex = order.indexOf(candidate.memberId)
-      belowFloor = { memberId: candidate.memberId, tier, score: (tier - floor) * 2 + (1 - Math.min(1.5, usage.pressure)) * policy.expiryWeight, order: orderIndex < 0 ? order.length : orderIndex }
+      belowFloor.push({ memberId: candidate.memberId, tier, score: (tier - floor) * 2 + (1 - Math.min(1.5, usage.pressure)) * policy.expiryWeight, order: orderIndex < 0 ? order.length : orderIndex })
       continue
     }
     // Higher score wins. Model fit dominates: the closest qualifying tier wins,
@@ -135,14 +138,24 @@ export const rankCandidates = (input: RankingInput): RankingResult => {
 
   scored.sort((left, right) => right.score - left.score || left.order - right.order)
   const best = scored[0]
-  if (best) return { chosen: best.memberId, skipped }
-  if (belowFloor) {
-    // Every member was below the floor but none was blocked or benched: take the
-    // best available rather than failing the task. This is a deviation note on
-    // the decision, not a skip: the member was chosen, not passed over.
+  if (best) {
+    for (const entry of belowFloor) {
+      skipped[entry.memberId] = `model tier ${entry.tier} is below the tier ${floor} floor for ${task.kind} work`
+    }
+    return { chosen: best.memberId, skipped }
+  }
+  if (belowFloor.length > 0) {
+    // No member reaches the floor: take the best available rather than failing
+    // the task. This is a deviation note on the decision, not a skip. The other
+    // below-floor members are still explained as passed over.
+    const nearest = [...belowFloor].sort((left, right) => right.score - left.score || left.order - right.order)[0]!
+    for (const entry of belowFloor) {
+      if (entry.memberId === nearest.memberId) continue
+      skipped[entry.memberId] = `model tier ${entry.tier} is below the tier ${floor} floor for ${task.kind} work`
+    }
     return {
-      chosen: belowFloor.memberId,
-      note: `no member reaches the tier ${floor} floor; used the nearest tier ${belowFloor.tier}`,
+      chosen: nearest.memberId,
+      note: `no member reaches the tier ${floor} floor; used the nearest tier ${nearest.tier}`,
       skipped,
     }
   }

@@ -58,7 +58,7 @@ describe("decideRoute", () => {
       now,
     })
     expect(result.kind).toBe("selected")
-    expect(result.skipped.a ?? result.skipped.b).toContain("floor")
+    if (result.kind === "selected") expect(result.note).toContain("floor")
   })
 
   it("returns exhausted, not unavailable, when every observed candidate is blocked", () => {
