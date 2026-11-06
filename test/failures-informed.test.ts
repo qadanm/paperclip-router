@@ -85,6 +85,8 @@ describe("decision ring", () => {
         chosen: "m",
         skipped: {},
         signals: [],
+        tier: 2,
+        confidence: 0.9,
         mode: "routed",
       })
     }

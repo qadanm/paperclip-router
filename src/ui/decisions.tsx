@@ -48,9 +48,11 @@ export function DecisionsView({ data }: { data: DecisionsPayload | undefined }) 
                 {decision.mode === "dry-run" ? " · dry run" : ""}
               </span>
             </div>
-            {decision.signals.length > 0 ? (
-              <div style={{ color: "#7dd3e8", fontSize: 12, marginTop: 6 }}>{decision.signals.join(", ")}</div>
-            ) : null}
+            <div style={{ color: "#7dd3e8", fontSize: 12, marginTop: 6 }}>
+              tier {decision.tier}
+              {decision.confidence < 0.6 ? " · borderline, nearest tier" : ""}
+              {decision.signals.length > 0 ? ` · ${decision.signals.join(", ")}` : ""}
+            </div>
             {Object.entries(decision.skipped).length > 0 ? (
               <dl style={{ margin: "10px 0 0", display: "grid", gridTemplateColumns: "max-content 1fr", gap: "4px 12px" }}>
                 {Object.entries(decision.skipped).map(([memberId, reason]) => (

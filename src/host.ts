@@ -214,6 +214,8 @@ export class RouterHost {
       chosen: result.kind === "selected" ? result.memberId : null,
       skipped: result.skipped,
       signals: task.signals,
+      tier: task.tier,
+      confidence: task.confidence,
       mode: config.dryRun ? "dry-run" : "routed",
     }
     this.queueDecision(input.companyId, record)

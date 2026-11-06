@@ -10,6 +10,8 @@ const decision = {
   chosen: "m1",
   skipped: { m2: "weekly window 82% used, resets in 2d" },
   signals: ["narrow_scope"],
+  tier: 2 as const,
+  confidence: 0.9,
   mode: "routed" as const,
 }
 

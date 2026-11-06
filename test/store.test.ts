@@ -9,6 +9,8 @@ const decision = (at: string): DecisionRecord => ({
   chosen: "m1",
   skipped: {},
   signals: [],
+  tier: 2,
+  confidence: 0.9,
   mode: "routed",
 })
 

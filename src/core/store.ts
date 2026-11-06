@@ -16,6 +16,9 @@ export interface DecisionRecord {
   readonly chosen: string | null
   readonly skipped: Record<string, string>
   readonly signals: readonly string[]
+  /** Task tier the decision used, and how firmly it was classified. */
+  readonly tier: 1 | 2 | 3
+  readonly confidence: number
   /** "dry-run" decisions are recorded but the host's reference rotation is used. */
   readonly mode: "routed" | "dry-run"
 }
