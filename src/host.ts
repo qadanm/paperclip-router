@@ -136,7 +136,7 @@ export class RouterHost {
   private readonly decisions = new Map<string, DecisionRecord[]>()
   private readonly failures = new Map<string, FailureRecord[]>()
   private readonly configs = new Map<string, RouterConfig>()
-  private readonly tasks = new Map<string, { task: TaskClass; at: number }>()
+  private readonly tasks = new Map<string, { task: TaskClass; title?: string | undefined; at: number }>()
   private readonly pending = new Map<string, DecisionRecord[]>()
   private loaded = new Set<string>()
 
@@ -172,16 +172,18 @@ export class RouterHost {
     }
   }
 
-  async taskFor(companyId: string, taskKey: string): Promise<TaskClass> {
+  async taskFor(companyId: string, taskKey: string): Promise<{ task: TaskClass; title?: string | undefined }> {
     const cacheKey = `${companyId}\u0000${taskKey}`
     const cached = this.tasks.get(cacheKey)
-    if (cached && Date.now() - cached.at < 60_000) return cached.task
+    if (cached && Date.now() - cached.at < 60_000) return cached
     const issue = await withTimeout(this.ctx.issues.get(taskKey, companyId), 1200)
+    const title = issue?.title?.trim()
     const task = issue
       ? classifyTask({ title: issue.title, description: issue.description ?? undefined })
       : classifyTask({ title: "" })
-    this.tasks.set(cacheKey, { task, at: Date.now() })
-    return task
+    const entry = { task, ...(title ? { title } : {}), at: Date.now() }
+    this.tasks.set(cacheKey, entry)
+    return entry
   }
 
   policy(config: RouterConfig): RankingPolicy {
@@ -204,7 +206,7 @@ export class RouterHost {
     const now = input.now ? new Date(input.now) : new Date()
     await this.ensureLoaded(input.companyId)
     const config = await this.config(input.companyId)
-    const task = await this.taskFor(input.companyId, input.taskKey)
+    const { task, title } = await this.taskFor(input.companyId, input.taskKey)
     const memory = activeFailures(this.failures.get(input.companyId) ?? [], now, config.memoryMinutes, input.taskKey)
     const result = decideRoute({ request: input.request, task, memory, policy: this.policy(config), now })
 
@@ -214,6 +216,7 @@ export class RouterHost {
       at: (Number.isFinite(now.getTime()) ? now : new Date()).toISOString(),
       companyId: input.companyId,
       taskKey: input.taskKey,
+      ...(title ? { taskTitle: title } : {}),
       agentId: input.agentId,
       chosen: chosenId,
       ...(chosenId ? { chosenLabel: labelFor.get(chosenId) } : {}),
@@ -298,6 +301,41 @@ export class RouterHost {
   }
 
   /**
+   * Fill task titles for records written before titles were stored.
+   *
+   * The page is where a person asks "what was routed", so an eight character uuid
+   * is the least useful possible answer. The titles are already in the host; this
+   * reads them at display time instead of rewriting stored history. Bounded to the
+   * rows being shown, deduplicated by task, and best effort: a task the agent has
+   * since deleted stays as a reference, which is honest.
+   */
+  private async withTaskTitles(companyId: string, decisions: ReadonlyArray<DecisionRecord>): Promise<DecisionRecord[]> {
+    const missing = [
+      ...new Set(
+        decisions
+          .filter((decision) => !decision.taskTitle && decision.taskKey)
+          .map((decision) => decision.taskKey),
+      ),
+    ].slice(0, 50)
+    if (missing.length === 0) return [...decisions]
+
+    const resolved = new Map<string, string>()
+    await Promise.all(
+      missing.map(async (taskKey) => {
+        const { title } = await this.taskFor(companyId, taskKey)
+        if (title) resolved.set(taskKey, title)
+      }),
+    )
+    if (resolved.size === 0) return [...decisions]
+
+    return decisions.map((decision) => {
+      if (decision.taskTitle) return decision
+      const title = resolved.get(decision.taskKey)
+      return title ? { ...decision, taskTitle: title } : decision
+    })
+  }
+
+  /**
    * Everything the page renders: the retained decisions (repaired for display),
    * current member standing, and the window the failure memory is using so the
    * page can say when a bench expires.
@@ -310,7 +348,8 @@ export class RouterHost {
   }> {
     await this.ensureLoaded(companyId)
     const config = await this.config(companyId)
-    const { decisions, repaired } = repairDecisions((this.decisions.get(companyId) ?? []).slice(0, 50))
+    const { decisions: ring, repaired } = repairDecisions((this.decisions.get(companyId) ?? []).slice(0, 50))
+    const decisions = await this.withTaskTitles(companyId, ring)
     const members = memberStates({
       decisions,
       failures: this.failures.get(companyId) ?? [],

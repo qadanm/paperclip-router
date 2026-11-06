@@ -1,5 +1,7 @@
+import { useState } from "react"
 import type { DecisionRecord } from "../core/store.js"
 import type { MemberState } from "../core/members.js"
+import { BrandMark, pageCss } from "./theme.js"
 
 export interface DecisionsPayload {
   readonly decisions: ReadonlyArray<DecisionRecord>
@@ -9,342 +11,402 @@ export interface DecisionsPayload {
 }
 
 /**
- * Design notes.
+ * The page.
  *
- * Paperclip is themeable and light by default, and a plugin page renders inside
- * its own shell. Everything here reads the host's own CSS tokens with a fallback,
- * so the page follows light, dark, and any custom theme without knowing which is
- * active.
+ * The question this has to answer, in order: is my pool healthy, and why did it
+ * pick that account for that task. Everything below serves that sequence. Pool
+ * standing first, because a held-back member is the only actionable thing here.
+ * Decisions second, one dense row each, expanding in place for the reasoning.
  *
- * The visual language is Paperclip's: 13px text, grey token colours, 6px radii, a
- * muted uppercase label, one accent for the chosen member. Smart Router's own
- * identity appears in three places and nowhere else: the mark, the wordmark, and
- * the gradient hairline under it.
- *
- * Order on the page follows the questions a person actually asks: which members
- * are benched right now, then what was decided and why.
+ * Rows are led by the task, not the model. "Add billing webhooks" is what a
+ * person recognises; `claude-sonnet-5-5 · codex` is the answer, and it belongs
+ * underneath. Older records without a stored title fall back to the short task
+ * reference rather than pretending to know.
  */
 
-const TOKEN = {
-  bg: "var(--v2-background-bg-base, #ffffff)",
-  raised: "var(--v2-background-bg-layer-01, #f5f5f6)",
-  soft: "var(--v2-background-bg-layer-02, #ececee)",
-  text: "var(--v2-text-text-base, #1a1a1d)",
-  muted: "var(--v2-text-text-muted, #5f5f6a)",
-  faint: "var(--v2-text-text-faint, #85858f)",
-  border: "var(--v2-border-border-muted, rgba(0,0,0,0.08))",
-  strong: "var(--v2-border-border-strong, rgba(0,0,0,0.2))",
-  good: "var(--v2-state-fg-success, #1f7a45)",
-  warn: "var(--v2-state-fg-warning, #8a6100)",
-  mono: "ui-monospace, SFMono-Regular, Menlo, monospace",
-} as const
+const PAGE_SIZE = 8
 
-const BRAND = "linear-gradient(90deg, #0f766e, #0891b2)"
+/** Signals arrive as identifiers. People read phrases. */
+const SIGNAL_COPY: Readonly<Record<string, string>> = {
+  broad_scope: "broad scope",
+  long_brief: "long brief",
+  stack_trace: "stack trace",
+  self_described_simple_ignored: "said it was simple",
+  simple_discount: "short request",
+  narrow_scope: "narrow scope",
+}
 
-const shortTime = (iso: string | undefined) => {
+const signalText = (signal: string) => SIGNAL_COPY[signal] ?? signal.replace(/_/g, " ")
+
+const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`
+
+/** Relative time first: "4 min ago" answers more than a wall clock does. */
+const ago = (iso: string | undefined): string => {
   if (!iso) return ""
-  const date = new Date(iso)
-  if (!Number.isFinite(date.getTime())) return ""
-  return date.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+  const at = Date.parse(iso)
+  if (!Number.isFinite(at)) return ""
+  const seconds = (Date.now() - at) / 1000
+  if (seconds < 45) return "just now"
+  if (seconds < 90) return "1 min ago"
+  const minutes = Math.round(seconds / 60)
+  if (minutes < 60) return `${minutes} min ago`
+  const hours = Math.round(minutes / 60)
+  if (hours < 24) return `${hours} ${hours === 1 ? "hr" : "hrs"} ago`
+  const days = Math.round(hours / 24)
+  if (days < 30) return `${days} ${days === 1 ? "day" : "days"} ago`
+  return new Date(at).toLocaleDateString([], { month: "short", day: "numeric" })
 }
 
-const label: React.CSSProperties = {
-  fontSize: 11,
-  fontWeight: 600,
-  letterSpacing: "0.06em",
-  textTransform: "uppercase",
-  color: TOKEN.faint,
+/** The exact value, for the title attribute. Relative time must never hide it. */
+const exact = (iso: string | undefined): string | undefined => {
+  if (!iso) return undefined
+  const at = Date.parse(iso)
+  if (!Number.isFinite(at)) return undefined
+  return new Date(at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })
 }
 
-function Mark({ size = 22 }: { size?: number }) {
+/** Host keys read `lifecycle:<uuid>`. Eight characters find the task again. */
+const shortRef = (taskKey: string): string => {
+  if (!taskKey) return "no task key"
+  const uuid = taskKey.includes(":") ? taskKey.slice(taskKey.indexOf(":") + 1) : taskKey
+  return uuid.slice(0, 8)
+}
+
+function Chevron() {
   return (
-    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true">
-      <defs>
-        <linearGradient id="sr-mark" x1="0" y1="1" x2="1" y2="0">
-          <stop offset="0" stopColor="#0f766e" />
-          <stop offset="1" stopColor="#0891b2" />
-        </linearGradient>
-      </defs>
-      <circle cx="16" cy="16" r="14.5" fill="none" stroke="url(#sr-mark)" strokeWidth="2" />
-      <path d="M7.5 19.5c3-2 6-2 8.5-4.2s4.5-4.3 8.5-4.3" fill="none" stroke="url(#sr-mark)" strokeWidth="2" strokeLinecap="round" />
+    <svg width="9" height="9" viewBox="0 0 10 10" fill="none" aria-hidden="true">
+      <path d="M3.4 2 6.8 5l-3.4 3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }
 
-function Pill({ tone, children }: { tone: "good" | "warn" | "quiet"; children: React.ReactNode }) {
-  const color = tone === "good" ? TOKEN.good : tone === "warn" ? TOKEN.warn : TOKEN.muted
-  return (
-    <span
-      style={{
-        fontSize: 10,
-        fontWeight: 700,
-        letterSpacing: "0.06em",
-        textTransform: "uppercase",
-        color,
-        border: `1px solid ${TOKEN.border}`,
-        borderRadius: 999,
-        padding: "1px 7px",
-        background: TOKEN.raised,
-        whiteSpace: "nowrap",
-      }}
-    >
-      {children}
-    </span>
-  )
-}
-
-function Confidence({ tier, confidence }: { tier: 1 | 2 | 3; confidence: number }) {
+/** Tier as an ordinal: three segments, filled as far as the task requires. */
+function Tier({ tier, confidence }: { tier: 1 | 2 | 3; confidence: number }) {
   const firm = confidence >= 0.7
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: TOKEN.muted }}>
-      <span
-        aria-hidden="true"
-        style={{ width: 6, height: 6, borderRadius: 999, background: firm ? TOKEN.good : TOKEN.warn, flexShrink: 0 }}
-      />
-      tier {tier}
-      {firm ? "" : " · borderline"}
+    <span className="sr-tier">
+      <span className="sr-meter" aria-hidden="true">
+        {[1, 2, 3].map((step) => (
+          <i key={step} className={step <= tier ? "on" : undefined} />
+        ))}
+      </span>
+      <span className="sr-tier-text">
+        <span className="sr-sr-only">{`model tier ${tier} of 3, `}</span>
+        {`tier ${tier}`}
+        {firm ? "" : " · borderline"}
+      </span>
     </span>
   )
 }
 
-/** Current standing of every member the router knows about. */
-function MemberTable({ members }: { members: ReadonlyArray<MemberState> }) {
-  if (members.length === 0) return null
+function Lockup({ title }: { title?: string | undefined }) {
   return (
-    <section style={{ marginBottom: 22 }}>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 }}>
-        <span style={label}>Members</span>
-        <span style={{ fontSize: 12, color: TOKEN.faint }}>
-          {members.filter((member) => member.benched).length} held back
+    <div className="sr-brand">
+      <BrandMark height={30} title={title} />
+      <div className="sr-lockup">
+        <span className="sr-wordmark">Smart Router</span>
+        <span className="sr-attribute">For Paperclip</span>
+      </div>
+    </div>
+  )
+}
+
+function Pool({ members, decisions }: { members: ReadonlyArray<MemberState>; decisions: ReadonlyArray<DecisionRecord> }) {
+  const held = members.filter((member) => member.benched)
+  const total = decisions.filter((decision) => decision.chosen).length
+
+  return (
+    <section className="sr-section" aria-labelledby="sr-pool-label">
+      <div className="sr-head">
+        <h2 className="sr-label" id="sr-pool-label">
+          Pool
+        </h2>
+        <span className="sr-count">
+          {held.length === 0
+            ? `${plural(members.length, "member")}, all eligible`
+            : `${plural(held.length, "member")} held back`}
         </span>
       </div>
-      <div style={{ border: `1px solid ${TOKEN.border}`, borderRadius: 8, overflow: "hidden" }}>
-        {members.map((member, index) => (
-          <div
-            key={member.memberId}
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr max-content",
-              gap: 12,
-              alignItems: "center",
-              padding: "10px 14px",
-              background: TOKEN.bg,
-              borderTop: index === 0 ? "none" : `1px solid ${TOKEN.border}`,
-            }}
-          >
-            <div style={{ minWidth: 0 }}>
-              <div
-                style={{
-                  fontFamily: TOKEN.mono,
-                  fontSize: 12.5,
-                  color: TOKEN.text,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-                title={member.memberId}
-              >
-                {member.label}
+      <div className="sr-table sr-members">
+        <div className="sr-tr sr-tr-head" aria-hidden="true">
+          <span>Account</span>
+          <span>Standing</span>
+          <span>Chosen</span>
+          <span>Last used</span>
+        </div>
+        {members.map((member) => {
+          const share = total > 0 && member.chosenCount > 0 ? Math.round((member.chosenCount / total) * 100) : null
+          return (
+            <div className="sr-tr" key={member.memberId}>
+              <div style={{ minWidth: 0 }}>
+                <div className="sr-member-name" title={member.memberId}>
+                  {member.label}
+                </div>
+                <div className="sr-sub">
+                  {member.benched && member.benchedUntil
+                    ? `free again ${ago(member.benchedUntil)}`
+                    : share !== null
+                      ? `${share}% of decisions`
+                      : "no decisions yet"}
+                </div>
               </div>
-              <div style={{ fontSize: 11.5, color: TOKEN.faint, marginTop: 2 }}>
-                {member.chosenCount === 0
-                  ? "never chosen yet"
-                  : `${member.chosenCount} ${member.chosenCount === 1 ? "decision" : "decisions"}${
-                      member.lastChosenAt ? `, last ${shortTime(member.lastChosenAt)}` : ""
-                    }`}
-                {member.benched && member.benchedUntil ? ` · free again ${shortTime(member.benchedUntil)}` : ""}
+              <div>
+                <span className={`sr-standing ${member.benched ? "sr-stand-held" : "sr-stand-ok"}`}>
+                  <span className="sr-dot" aria-hidden="true" />
+                  {member.benched ? "held back" : "ready"}
+                </span>
+              </div>
+              <div className="sr-num" style={{ fontSize: 12.5 }}>
+                {member.chosenCount === 0 ? <span className="sr-muted">none</span> : member.chosenCount}
+              </div>
+              <div className="sr-when" style={{ textAlign: "left" }} title={exact(member.lastChosenAt)}>
+                {member.lastChosenAt ? ago(member.lastChosenAt) : <span className="sr-muted">not yet</span>}
               </div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              {member.benched ? <Pill tone="warn">held back</Pill> : <Pill tone="good">ready</Pill>}
-            </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
-      {members.some((member) => member.benched) ? (
-        <p style={{ fontSize: 11.5, color: TOKEN.faint, margin: "8px 0 0", lineHeight: 1.5 }}>
-          A held-back member rejected a request deterministically. It is out of new tasks until the window passes,
-          then it is eligible again without any action.
+      {held.length > 0 ? (
+        <p className="sr-sub" style={{ margin: "7px 0 0", maxWidth: "74ch" }}>
+          A held-back member rejected a request in a way a retry will not fix. It rejoins new tasks when its window ends.
+          Nothing to do.
         </p>
       ) : null}
     </section>
   )
 }
 
-/** One decision. The chosen member is the headline; passed-over members follow. */
-function DecisionCard({ decision }: { decision: DecisionRecord }) {
+function DecisionRow({ decision, index }: { decision: DecisionRecord; index: number }) {
   const skips = Object.entries(decision.skipped)
+  const id = `sr-d${index}`
+  const task = decision.taskTitle
+  const chosen = decision.chosenLabel ?? decision.chosen
+
   return (
-    <li
-      style={{
-        listStyle: "none",
-        border: `1px solid ${TOKEN.border}`,
-        borderRadius: 8,
-        background: TOKEN.bg,
-        padding: "14px 16px",
-      }}
-    >
-      <div style={{ display: "flex", gap: 10, alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap" }}>
-        <span style={{ display: "flex", alignItems: "baseline", gap: 8, minWidth: 0 }}>
-          <span
-            style={{
-              fontFamily: TOKEN.mono,
-              fontSize: 13,
-              fontWeight: 600,
-              color: TOKEN.text,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-            title={decision.chosen ?? undefined}
-          >
-            {decision.chosenLabel ?? decision.chosen ?? "no eligible member"}
+    <details className="sr-row">
+      <summary className="sr-tr sr-summary" aria-controls={id}>
+        <span className="sr-chev">
+          <Chevron />
+        </span>
+        <span className="sr-chosen">
+          <span className={`sr-chosen-task${task ? "" : " is-none"}`} title={task ?? decision.taskKey}>
+            {task ?? shortRef(decision.taskKey)}
           </span>
-          {decision.chosen ? <Pill tone="good">chosen</Pill> : null}
-        </span>
-        <span style={{ fontSize: 12, color: TOKEN.faint, fontVariantNumeric: "tabular-nums" }}>
-          {shortTime(decision.at)}
-          {decision.mode === "dry-run" ? " · dry run" : ""}
-        </span>
-      </div>
-
-      <div style={{ display: "flex", gap: 14, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
-        <Confidence tier={decision.tier} confidence={decision.confidence} />
-        <span
-          style={{
-            fontSize: 12,
-            color: TOKEN.faint,
-            fontFamily: TOKEN.mono,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-            maxWidth: "42ch",
-          }}
-          title={decision.taskKey}
-        >
-          {decision.taskKey}
-        </span>
-      </div>
-
-      {decision.note ? (
-        <div
-          style={{
-            marginTop: 10,
-            fontSize: 12,
-            color: TOKEN.warn,
-            background: TOKEN.raised,
-            border: `1px solid ${TOKEN.border}`,
-            borderRadius: 6,
-            padding: "6px 10px",
-          }}
-        >
-          {decision.note}
-        </div>
-      ) : null}
-
-      {decision.signals.length > 0 ? (
-        <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 10 }}>
-          {decision.signals.map((signal) => (
-            <span
-              key={signal}
-              style={{
-                fontSize: 11,
-                color: TOKEN.muted,
-                background: TOKEN.soft,
-                border: `1px solid ${TOKEN.border}`,
-                borderRadius: 5,
-                padding: "2px 7px",
-                fontFamily: TOKEN.mono,
-              }}
-            >
-              {signal}
-            </span>
-          ))}
-        </div>
-      ) : null}
-
-      {skips.length > 0 ? (
-        <div style={{ marginTop: 12, borderTop: `1px solid ${TOKEN.border}`, paddingTop: 10 }}>
-          <div style={{ ...label, marginBottom: 6 }}>Passed over</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-            {skips.map(([memberId, reason]) => (
-              <div
-                key={memberId}
-                style={{ display: "grid", gridTemplateColumns: "max-content 1fr", gap: 10, alignItems: "baseline" }}
-              >
-                <span
-                  style={{ fontFamily: TOKEN.mono, fontSize: 11.5, color: TOKEN.muted, whiteSpace: "nowrap" }}
-                  title={memberId}
-                >
-                  {decision.labels?.[memberId] ?? memberId}
+          <span className="sr-chosen-meta">
+            {chosen ? <span>{chosen}</span> : <span>no eligible member</span>}
+            {task ? (
+              <>
+                <span className="sr-sep" aria-hidden="true">
+                  ·
                 </span>
-                <span style={{ fontSize: 12.5, color: TOKEN.text, lineHeight: 1.5 }}>{reason}</span>
+                <span className="sr-ref">{shortRef(decision.taskKey)}</span>
+              </>
+            ) : null}
+            {decision.mode === "dry-run" ? (
+              <>
+                <span className="sr-sep" aria-hidden="true">
+                  ·
+                </span>
+                <span>dry run</span>
+              </>
+            ) : null}
+          </span>
+        </span>
+        <Tier tier={decision.tier} confidence={decision.confidence} />
+        <span className="sr-when" title={exact(decision.at)}>
+          {ago(decision.at)}
+        </span>
+      </summary>
+      <div className="sr-detail" id={id}>
+        <div className="sr-detail-inner">
+          {decision.note ? <p className="sr-note">{decision.note}</p> : null}
+
+          {skips.length > 0 ? (
+            <div>
+              <div className="sr-detail-label">Passed over</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                {skips.map(([memberId, reason]) => (
+                  <div className="sr-skip" key={memberId}>
+                    <span className="sr-skip-name" title={memberId}>
+                      {decision.labels?.[memberId] ?? memberId}
+                    </span>
+                    <span className="sr-skip-why">{reason}</span>
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
+          ) : null}
+
+          {decision.signals.length > 0 ? (
+            <div>
+              <div className="sr-detail-label">Read as</div>
+              <div className="sr-signals">
+                {decision.signals.map((signal) => (
+                  <span className="sr-signal" key={signal}>
+                    {signalText(signal)}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="sr-num" style={{ fontSize: 10.5, color: "var(--muted-foreground)" }}>
+            {`tier ${decision.tier} of 3 · confidence ${Math.round(decision.confidence * 100)}%`}
+            {decision.mode === "dry-run" ? " · recorded during dry run" : ""}
           </div>
         </div>
-      ) : null}
-    </li>
+      </div>
+    </details>
+  )
+}
+
+function EmptyState() {
+  return (
+    <div className="sr-empty">
+      <div className="sr-empty-title">No decisions yet</div>
+      <div className="sr-empty-body">
+        The router records a decision every time an agent asks for a connection. Nothing has asked yet, so there is nothing
+        to explain.
+      </div>
+      <ol className="sr-empty-steps">
+        <li>
+          <span className="sr-step-n">1</span>
+          <span>Put at least two accounts in one pool, so there is a choice to make.</span>
+        </li>
+        <li>
+          <span className="sr-step-n">2</span>
+          <span>Point an agent's AI connection at that pool.</span>
+        </li>
+        <li>
+          <span className="sr-step-n">3</span>
+          <span>Give the agent a task. The decision lands here with its reasoning.</span>
+        </li>
+      </ol>
+    </div>
   )
 }
 
 export function DecisionsView({ data }: { data: DecisionsPayload | undefined }) {
+  const [expanded, setExpanded] = useState(false)
   const decisions = data?.decisions ?? []
   const members = data?.members ?? []
+  const shown = expanded ? decisions : decisions.slice(0, PAGE_SIZE)
+  const held = members.filter((member) => member.benched).length
+  const dryRun = decisions.length > 0 && decisions.every((decision) => decision.mode === "dry-run")
 
   return (
-    <section
-      style={{
-        fontFamily: "inherit",
-        color: TOKEN.text,
-        background: TOKEN.bg,
-        padding: "28px 24px 40px",
-        maxWidth: 880,
-        fontSize: 13,
-      }}
-    >
-      <header style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <Mark />
-        <div style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
-          <span style={{ fontSize: 15, fontWeight: 650, letterSpacing: "-0.01em" }}>Smart Router</span>
-          <span style={{ ...label, fontSize: 9.5 }}>For Paperclip</span>
-        </div>
-      </header>
-      <div style={{ height: 2, borderRadius: 2, background: BRAND, width: 44, marginTop: 14, marginBottom: 18 }} />
-
-      <MemberTable members={members} />
-
-      {decisions.length === 0 ? (
-        <div
-          style={{
-            border: `1px dashed ${TOKEN.strong}`,
-            borderRadius: 8,
-            padding: "22px 20px",
-            background: TOKEN.raised,
-          }}
-        >
-          <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 6 }}>No decisions yet</div>
-          <div style={{ color: TOKEN.muted, lineHeight: 1.6, maxWidth: "62ch" }}>
-            Point an agent at a Smart Router pool and the next task will appear here: the member that was chosen, the
-            task tier it was chosen for, and the reason every other member was passed over.
+    <div className="sr-page">
+      <style>{pageCss}</style>
+      <div className="sr-inner">
+        <header className="sr-masthead">
+          <Lockup title="Smart Router" />
+          <div className="sr-live">
+            {decisions.length === 0 ? (
+              <span className="sr-chip sr-chip-quiet">waiting for first task</span>
+            ) : dryRun ? (
+              <span className="sr-chip">
+                <span className="sr-chip-dot" aria-hidden="true" />
+                dry run
+              </span>
+            ) : (
+              <span className="sr-chip">
+                <span className="sr-chip-dot" aria-hidden="true" />
+                routing
+              </span>
+            )}
+            {held > 0 ? <span className="sr-chip sr-chip-quiet">{plural(held, "held back")}</span> : null}
           </div>
-        </div>
-      ) : (
-        <>
-          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
-            <span style={label}>Recent decisions</span>
-            <span style={{ fontSize: 12, color: TOKEN.faint }}>
-              {decisions.length} {decisions.length === 1 ? "decision" : "decisions"}, newest first
-              {data?.repaired ? ` · ${data.repaired} repaired from an older format` : ""}
+        </header>
+
+        <Pool members={members} decisions={decisions} />
+
+        <section className="sr-section" aria-labelledby="sr-decisions-label">
+          <div className="sr-head">
+            <h2 className="sr-label" id="sr-decisions-label">
+              Decisions
+            </h2>
+            <span className="sr-count">
+              {decisions.length === 0 ? "newest first" : `${decisions.length}, newest first`}
             </span>
           </div>
-          <ul style={{ display: "flex", flexDirection: "column", gap: 10, margin: 0, padding: 0 }}>
-            {decisions.map((decision, index) => (
-              <DecisionCard key={`${decision.at}-${decision.taskKey}-${index}`} decision={decision} />
-            ))}
-          </ul>
-        </>
-      )}
-    </section>
+
+          {decisions.length === 0 ? (
+            <EmptyState />
+          ) : (
+            <>
+              <div className="sr-table sr-decisions">
+                <div className="sr-tr sr-tr-head" aria-hidden="true">
+                  <span />
+                  <span>Task</span>
+                  <span>Tier</span>
+                  <span style={{ textAlign: "right" }}>When</span>
+                </div>
+                {shown.map((decision, index) => (
+                  <DecisionRow key={`${decision.at}-${decision.taskKey}-${index}`} decision={decision} index={index} />
+                ))}
+              </div>
+              {decisions.length > PAGE_SIZE ? (
+                <button type="button" className="sr-more" onClick={() => setExpanded((value) => !value)}>
+                  {expanded ? "Show the newest 8" : `Show all ${decisions.length}`}
+                </button>
+              ) : null}
+            </>
+          )}
+        </section>
+
+        <footer className="sr-foot">
+          Each decision weighs the task's shape against model tier, the allowance windows your providers report, and recent
+          rejections.{data?.memoryMinutes ? ` A rejection keeps a member out for ${data.memoryMinutes} minutes.` : ""}
+          {data?.repaired ? ` ${plural(data.repaired, "older record was", "older records were")} read from a previous format.` : ""}
+          {" "}Pinned tasks are never rerouted.
+        </footer>
+      </div>
+    </div>
+  )
+}
+
+export function DecisionsLoading() {
+  return (
+    <div className="sr-page" aria-busy="true" aria-live="polite">
+      <style>{pageCss}</style>
+      <div className="sr-inner">
+        <header className="sr-masthead">
+          <Lockup />
+        </header>
+        <div className="sr-section">
+          <div className="sr-head">
+            <span className="sr-label">Pool</span>
+          </div>
+          <div className="sr-skeleton">
+            <div className="sr-skeleton-row" />
+            <div className="sr-skeleton-row" />
+          </div>
+        </div>
+        <span className="sr-sr-only">Loading router state</span>
+      </div>
+    </div>
+  )
+}
+
+export function DecisionsError({ message }: { message: string }) {
+  return (
+    <div className="sr-page">
+      <style>{pageCss}</style>
+      <div className="sr-inner">
+        <header className="sr-masthead">
+          <Lockup />
+        </header>
+        <div className="sr-empty" style={{ marginTop: 20 }}>
+          <div className="sr-empty-title">Could not read router state</div>
+          <div className="sr-empty-body">
+            The plugin worker did not answer. Routing is unaffected: when a decision cannot be made, the host falls back to
+            its own rotation.
+          </div>
+          <div className="sr-ref" style={{ marginTop: 10, color: "var(--muted-foreground)" }}>
+            {message}
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }

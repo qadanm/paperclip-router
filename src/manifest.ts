@@ -12,7 +12,7 @@ import type { PaperclipPluginManifestV1 } from "@paperclipai/plugin-sdk"
 const manifest: PaperclipPluginManifestV1 = {
   id: "qadan.paperclip-router",
   apiVersion: 1,
-  version: "0.2.0",
+  version: "0.3.0",
   displayName: "Smart Router",
   description:
     "Routes each task to the pool account and model that fits it, and explains the choice: task class with confidence, usage windows where the host reports them, and members held back after a rejection.",

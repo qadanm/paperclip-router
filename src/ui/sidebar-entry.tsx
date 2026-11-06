@@ -1,14 +1,17 @@
-import { useHostNavigation, useHostContext } from "@paperclipai/plugin-sdk/ui"
+import { useHostContext, useHostNavigation } from "@paperclipai/plugin-sdk/ui"
+import { BrandMark } from "./theme.js"
 
 /**
  * The sidebar entry.
  *
  * A plugin page in Paperclip has a URL but no navigation entry unless the plugin
- * renders one. This is that entry: a `sidebar` slot, so "Smart Router" sits in
- * the company sidebar next to Tasks and Projects.
+ * renders one. This is that entry: a `sidebar` slot, so Smart Router sits in the
+ * company sidebar next to Tasks and Projects.
  *
- * It is a real anchor via `linkProps`, so modifier-click, middle-click,
- * copy-link and open-in-new-tab all behave like every other link in the app.
+ * It is a host link via `linkProps`, so modifier-click, middle-click, copy-link
+ * and open-in-new-tab behave like every other link in the app. Styling leans on
+ * the host's own row treatment (`text-foreground`, `hover:bg-accent`) instead of
+ * hardcoded colors, so it inherits the active theme and any future host restyle.
  */
 export function RouterSidebarEntry() {
   const host = useHostContext()
@@ -18,37 +21,43 @@ export function RouterSidebarEntry() {
   return (
     <a
       {...navigation.linkProps(href)}
+      data-paperclip-router-entry=""
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 8,
+        gap: 9,
         width: "100%",
         padding: "6px 10px",
         borderRadius: 6,
         fontSize: 13,
         fontWeight: 500,
-        color: "var(--v2-text-text-base, #1a1a1d)",
+        color: "var(--foreground)",
         textDecoration: "none",
+        lineHeight: 1.4,
       }}
-      data-paperclip-router-entry=""
+      onMouseEnter={(event) => {
+        event.currentTarget.style.background = "var(--accent)"
+      }}
+      onMouseLeave={(event) => {
+        event.currentTarget.style.background = "transparent"
+      }}
     >
-      <svg width="16" height="16" viewBox="0 0 32 32" aria-hidden="true">
-        <defs>
-          <linearGradient id="sr-sidebar-mark" x1="0" y1="1" x2="1" y2="0">
-            <stop offset="0" stopColor="#0f766e" />
-            <stop offset="1" stopColor="#0891b2" />
-          </linearGradient>
-        </defs>
-        <circle cx="16" cy="16" r="14.5" fill="none" stroke="url(#sr-sidebar-mark)" strokeWidth="2.4" />
-        <path
-          d="M7.5 19.5c3-2 6-2 8.5-4.2s4.5-4.3 8.5-4.3"
-          fill="none"
-          stroke="url(#sr-sidebar-mark)"
-          strokeWidth="2.4"
-          strokeLinecap="round"
-        />
-      </svg>
-      Smart Router
+      {/* The brand pair is defined here as the theme's gradient variables, so the
+          mark matches the page without a second source of truth. */}
+      <span
+        style={
+          {
+            "--sr-from": "#0f766e",
+            "--sr-to": "#0891b2",
+            display: "flex",
+          } as React.CSSProperties
+        }
+        className="sr-sidebar-mark"
+      >
+        <BrandMark height={15} />
+      </span>
+      <style>{`.dark .sr-sidebar-mark { --sr-from: #2dd4bf; --sr-to: #67e8f9; }`}</style>
+      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Smart Router</span>
     </a>
   )
 }

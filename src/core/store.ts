@@ -12,6 +12,12 @@ export interface DecisionRecord {
   readonly companyId: string
   /** The host's opaque task correlation key, exactly as received. */
   readonly taskKey: string
+  /**
+   * The task's title at decision time, so the page can say what was routed
+   * instead of showing a uuid. Absent on records written before this field
+   * existed, and when the host could not resolve the task inside its budget.
+   */
+  readonly taskTitle?: string | undefined
   readonly agentId: string
   readonly chosen: string | null
   /** Human label for the chosen member: model and provider, not an opaque id. */

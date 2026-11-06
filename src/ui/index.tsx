@@ -1,16 +1,19 @@
 import { usePluginData, type PluginPageProps } from "@paperclipai/plugin-sdk/ui"
-import { DecisionsView, type DecisionsPayload } from "./decisions.js"
+import { DecisionsError, DecisionsLoading, DecisionsView, type DecisionsPayload } from "./decisions.js"
 
 /**
- * Host page entrypoint. The manifest names this export, so the page component
- * must be exported exactly as `RouterDecisionsPage`. Data comes from the
- * worker's `decisions` handler, scoped to the current company.
+ * Host page entrypoint. The manifest names this export, so the component must be
+ * exported exactly as `RouterDecisionsPage`. Data comes from the worker's
+ * `decisions` handler, scoped to the current company.
  */
 export { RouterSidebarEntry } from "./sidebar-entry.js"
 
 export function RouterDecisionsPage({ context }: PluginPageProps) {
   const { data, loading, error } = usePluginData<DecisionsPayload>("decisions", { companyId: context.companyId })
-  if (loading) return <p style={{ fontFamily: "system-ui, sans-serif", color: "#9a9aa6", padding: 24 }}>Loading decisions…</p>
-  if (error) return <p style={{ fontFamily: "system-ui, sans-serif", color: "#e08a8a", padding: 24 }}>{error.message}</p>
+
+  // Only a cold load shows the skeleton. A refresh keeps the real content on
+  // screen, so the page never flashes back to placeholders while polling.
+  if (loading && !data) return <DecisionsLoading />
+  if (error) return <DecisionsError message={error.message} />
   return <DecisionsView data={data ?? undefined} />
 }
