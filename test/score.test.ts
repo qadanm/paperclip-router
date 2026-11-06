@@ -48,7 +48,7 @@ describe("rankCandidates", () => {
     expect(result.chosen).toBe("strong")
   })
 
-  it("uses the runtime model and treats unknown models as tier 2", () => {
+  it("uses the runtime model, and an unknown model below the floor is still chosen as a last resort", () => {
     const result = rank({
       task: task(3, "architecture"),
       candidates: [c({ memberId: "mystery", model: "mystery-model" })],
@@ -58,9 +58,10 @@ describe("rankCandidates", () => {
       policy,
       now,
     })
-    expect(result.chosen).toBeUndefined()
-    expect(result.skipped.mystery).toContain("below the tier 3 floor")
-    expect(result.skipped.mystery).toContain("model tier 2")
+    // The floor is a preference, not a veto: a pool of unknown models must
+    // still route, with the deviation stated on the decision.
+    expect(result.chosen).toBe("mystery")
+    expect(result.skipped.mystery).toContain("tier 2")
   })
 
   it("rotates on ties instead of re-pinning the last member", () => {

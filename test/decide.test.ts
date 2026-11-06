@@ -45,7 +45,7 @@ describe("decideRoute", () => {
     expect(result).toMatchObject({ memberId: "b" })
   })
 
-  it("returns unavailable when candidates are eligible but cannot serve the task", () => {
+  it("still routes when no member reaches the floor, recording the deviation", () => {
     const result = route({
       request: {
         candidates: [c({ memberId: "a", model: "claude-haiku-5" }), c({ memberId: "b", model: "claude-haiku-5" })],
@@ -57,8 +57,8 @@ describe("decideRoute", () => {
       policy,
       now,
     })
-    expect(result.kind).toBe("unavailable")
-    if (result.kind === "unavailable") expect(result.skipped.a).toContain("below the tier 3 floor")
+    expect(result.kind).toBe("selected")
+    expect(result.skipped.a ?? result.skipped.b).toContain("floor")
   })
 
   it("returns exhausted, not unavailable, when every observed candidate is blocked", () => {

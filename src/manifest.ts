@@ -25,7 +25,6 @@ const manifest: PaperclipPluginManifestV1 = {
     "plugin.state.read",
     "plugin.state.write",
     "ui.page.register",
-    "agents.read",
   ],
   aiConnectionRouter: {
     name: "Smart Router pool",

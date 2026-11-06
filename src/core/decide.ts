@@ -40,7 +40,7 @@ const DEFAULT_WAIT_MS = 15 * 60_000
 export const decideRoute = (input: DecideInput): RouteResult => {
   const { request, task, memory, policy, now } = input
   try {
-    if (request.pinnedMemberId) {
+    if (request.pinnedMemberId && request.candidates.some((candidate) => candidate.memberId === request.pinnedMemberId)) {
       return { kind: "selected", memberId: request.pinnedMemberId, skipped: {} }
     }
     if (request.candidates.length === 0) {

@@ -153,25 +153,32 @@ export class RouterHost {
 
   async ensureLoaded(companyId: string): Promise<void> {
     if (this.loaded.has(companyId)) return
-    this.loaded.add(companyId)
     try {
-      const decisions = await withTimeout(this.ctx.state.get(companyScope(companyId, decisionsKey(companyId))), 800)
+      // Both reads in parallel: the route budget is 5 seconds for everything.
+      const [decisions, failures] = await Promise.all([
+        withTimeout(this.ctx.state.get(companyScope(companyId, decisionsKey(companyId))), 700),
+        withTimeout(this.ctx.state.get(companyScope(companyId, failuresKey(companyId))), 700),
+      ])
       if (Array.isArray(decisions)) this.decisions.set(companyId, decisions as DecisionRecord[])
-      const failures = await withTimeout(this.ctx.state.get(companyScope(companyId, failuresKey(companyId))), 800)
       if (Array.isArray(failures)) this.failures.set(companyId, failures as FailureRecord[])
+      // Only mark loaded when both reads produced an answer. A timed out or
+      // failed read must be retried, and must never cause the next flush to
+      // overwrite persisted history with an empty ring.
+      if (Array.isArray(decisions) && Array.isArray(failures)) this.loaded.add(companyId)
     } catch {
       // State is advisory; a cold worker must still route.
     }
   }
 
   async taskFor(companyId: string, taskKey: string): Promise<TaskClass> {
-    const cached = this.tasks.get(taskKey)
+    const cacheKey = `${companyId}\u0000${taskKey}`
+    const cached = this.tasks.get(cacheKey)
     if (cached && Date.now() - cached.at < 60_000) return cached.task
     const issue = await withTimeout(this.ctx.issues.get(taskKey, companyId), 1200)
     const task = issue
       ? classifyTask({ title: issue.title, description: issue.description ?? undefined })
       : classifyTask({ title: "" })
-    this.tasks.set(taskKey, { task, at: Date.now() })
+    this.tasks.set(cacheKey, { task, at: Date.now() })
     return task
   }
 
@@ -180,6 +187,7 @@ export class RouterHost {
       floorByTier: config.floorByTier,
       modelTier: config.modelTier,
       expiryWeight: config.expiryWeight,
+      safetyMarginPercent: config.safetyMarginPercent,
     }
   }
 
@@ -188,15 +196,18 @@ export class RouterHost {
     agentId: string
     taskKey: string
     request: RouteRequest
+    /** The host's clock for this request; worker clock skew must not decide. */
+    now?: string | undefined
   }): Promise<RouteResult> {
+    const now = input.now ? new Date(input.now) : new Date()
     await this.ensureLoaded(input.companyId)
     const config = await this.config(input.companyId)
     const task = await this.taskFor(input.companyId, input.taskKey)
-    const memory = activeFailures(this.failures.get(input.companyId) ?? [], new Date(), config.memoryMinutes)
-    const result = decideRoute({ request: input.request, task, memory, policy: this.policy(config), now: new Date() })
+    const memory = activeFailures(this.failures.get(input.companyId) ?? [], now, config.memoryMinutes, input.taskKey)
+    const result = decideRoute({ request: input.request, task, memory, policy: this.policy(config), now })
 
     const record: DecisionRecord = {
-      at: new Date().toISOString(),
+      at: (Number.isFinite(now.getTime()) ? now : new Date()).toISOString(),
       companyId: input.companyId,
       taskKey: input.taskKey,
       agentId: input.agentId,
@@ -230,10 +241,11 @@ export class RouterHost {
   }
 
   private queueDecision(companyId: string, record: DecisionRecord): void {
-    const ring = pushDecision([...(this.pending.get(companyId) ?? []), ...(this.decisions.get(companyId) ?? [])], record, DECISION_CAP)
-    this.decisions.set(companyId, ring.slice(0, DECISION_CAP))
-    const queue = [...(this.pending.get(companyId) ?? []), record]
-    this.pending.set(companyId, queue)
+    // One list, one flush: decisions already includes anything pending, so
+    // folding pending in again would duplicate rows.
+    const ring = pushDecision(this.decisions.get(companyId) ?? [], record, DECISION_CAP)
+    this.decisions.set(companyId, ring)
+    this.pending.set(companyId, ring)
     // Never awaited by the route hook: a state write must not eat the budget.
     queueMicrotask(() => void this.flushDecisions(companyId))
   }
@@ -249,13 +261,20 @@ export class RouterHost {
     }
   }
 
-  async recordRunFailure(companyId: string, agentId: string, issueId: string | undefined, error: string | undefined, errorCode: string | undefined): Promise<void> {
+  async recordRunFailure(companyId: string, agentId: string, issueId: string | undefined, error: string | undefined, errorCode: string | undefined, occurredAt?: string): Promise<void> {
     const classification = classifyRunError({ error, errorCode })
     if (classification !== "deterministic") return
+    // Without an exact task key the join is a guess, and a wrong guess benches a
+    // healthy member. Do nothing instead.
+    if (!issueId) return
     await this.ensureLoaded(companyId)
-    const recent = (this.decisions.get(companyId) ?? []).find(
-      (entry) => entry.agentId === agentId && entry.chosen !== null && (issueId === undefined || entry.taskKey === issueId),
-    )
+    const eventAt = occurredAt ? Date.parse(occurredAt) : Number.NaN
+    const recent = (this.decisions.get(companyId) ?? []).find((entry) => {
+      if (entry.agentId !== agentId || entry.chosen === null || entry.taskKey !== issueId) return false
+      if (!Number.isFinite(eventAt)) return true
+      const at = Date.parse(entry.at)
+      return Number.isFinite(at) && at <= eventAt
+    })
     if (!recent?.chosen) return
     const failures = [
       { memberId: recent.chosen, at: new Date().toISOString(), taskKey: recent.taskKey, class: classification },

@@ -54,14 +54,26 @@ describe("assessUsage", () => {
 })
 
 describe("earliestReset", () => {
-  it("returns the soonest future reset across usages", () => {
-    const a = usage({ limits: [win({ resetsAt: "2026-11-05T02:00:00.000Z" })] })
-    const b = usage({ limits: [win({ resetsAt: "2026-11-06T00:00:00.000Z" })] })
+  it("returns the soonest future reset among the windows that are blocking", () => {
+    const a = usage({ limits: [win({ limitReached: true, resetsAt: "2026-11-05T02:00:00.000Z" })] })
+    const b = usage({ limits: [win({ limitReached: true, resetsAt: "2026-11-06T00:00:00.000Z" })] })
     expect(earliestReset([a, b], now)?.toISOString()).toBe("2026-11-05T02:00:00.000Z")
   })
 
-  it("returns undefined when nothing resets in the future", () => {
-    const a = usage({ limits: [win({ resetsAt: "2026-11-01T00:00:00.000Z" })] })
+  it("ignores a non blocking window's earlier reset", () => {
+    // A member is blocked by one window; waking on another window's reset would
+    // retry into the same cap.
+    const a = usage({
+      limits: [
+        win({ id: "5h", limitReached: false, resetsAt: "2026-11-05T01:00:00.000Z" }),
+        win({ id: "weekly", limitReached: true, resetsAt: "2026-11-09T00:00:00.000Z" }),
+      ],
+    })
+    expect(earliestReset([a], now)?.toISOString()).toBe("2026-11-09T00:00:00.000Z")
+  })
+
+  it("returns undefined when no blocking window resets in the future", () => {
+    const a = usage({ limits: [win({ limitReached: true, resetsAt: "2026-11-01T00:00:00.000Z" })] })
     expect(earliestReset([a], now)).toBeUndefined()
   })
 })

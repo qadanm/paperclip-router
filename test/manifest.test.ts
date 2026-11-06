@@ -4,7 +4,6 @@ import manifest from "../src/manifest.js"
 describe("plugin manifest", () => {
   it("declares exactly the capabilities the plugin uses", () => {
     expect([...manifest.capabilities].sort()).toEqual([
-      "agents.read",
       "ai.connections.route",
       "events.subscribe",
       "issues.read",

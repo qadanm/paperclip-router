@@ -17,6 +17,8 @@ export interface WindowUsage {
   readonly usedPercent: number | null
   readonly remainingPercent: number | null
   readonly limitReached: boolean | null
+  /** Present only when the provider states admission explicitly. */
+  readonly allowed?: boolean | null
 }
 
 export interface MemberUsage {
@@ -31,6 +33,8 @@ export interface UsageAssessment {
   readonly state: UsageState
   /** 0..1.5 relative cost proxy. 1 is neutral. Lower means cheaper to spend. */
   readonly pressure: number
+  /** Fill fraction per observed window, 0..1. Used by the safety margin. */
+  readonly fills: readonly number[]
   readonly notes: string[]
 }
 
@@ -44,27 +48,29 @@ const fillOf = (w: WindowUsage): number | null => {
 }
 
 export const assessUsage = (usage: MemberUsage | undefined, now: Date): UsageAssessment => {
-  if (!usage) return { state: "unknown", pressure: 1, notes: ["usage was not observed"] }
+  if (!usage) return { state: "unknown", pressure: 1, fills: [], notes: ["usage was not observed"] }
   if (usage.status !== "ok") {
-    return { state: "unknown", pressure: 1, notes: [`usage is ${usage.status}`] }
+    return { state: "unknown", pressure: 1, fills: [], notes: [`usage is ${usage.status}`] }
   }
   const observedAt = Date.parse(usage.checkedAt)
   if (!Number.isFinite(observedAt) || now.getTime() - observedAt > STALE_MS) {
-    return { state: "unknown", pressure: 1, notes: ["usage observation is stale"] }
+    return { state: "unknown", pressure: 1, fills: [], notes: ["usage observation is stale"] }
   }
-  const observed = usage.limits.filter((w) => fillOf(w) !== null || w.limitReached === true)
-  if (observed.length === 0) return { state: "unknown", pressure: 1, notes: ["usage reported no windows"] }
+  const observed = usage.limits.filter((w) => fillOf(w) !== null || w.limitReached === true || w.allowed === false)
+  if (observed.length === 0) return { state: "unknown", pressure: 1, fills: [], notes: ["usage reported no windows"] }
 
-  const blocked = observed.filter((w) => w.limitReached === true)
+  const blocked = observed.filter((w) => w.limitReached === true || w.allowed === false)
   if (blocked.length > 0) {
     return {
       state: "blocked",
       pressure: 1.5,
+      fills: blocked.map(() => 1),
       notes: blocked.map((w) => `${w.label} limit reached`),
     }
   }
 
   const notes: string[] = []
+  const fills: number[] = []
   let total = 0
   for (const w of observed) {
     const fill = fillOf(w) ?? 0.5
@@ -78,6 +84,7 @@ export const assessUsage = (usage: MemberUsage | undefined, now: Date): UsageAss
       proximity = Math.max(0.25, Math.min(1.5, untilReset / windowMs))
     }
     total += fill * proximity
+    fills.push(fill)
     const pct = Math.round(fill * 100)
     if (Number.isFinite(resetAt) && resetAt > now.getTime()) {
       const hours = Math.round((resetAt - now.getTime()) / 3_600_000)
@@ -86,15 +93,21 @@ export const assessUsage = (usage: MemberUsage | undefined, now: Date): UsageAss
       notes.push(`${w.label} ${pct}% used`)
     }
   }
-  return { state: "ok", pressure: total / observed.length, notes }
+  return { state: "ok", pressure: total / observed.length, fills, notes }
 }
 
+/**
+ * The soonest future reset among the windows that are actually blocking. A
+ * member is blocked by one window, and waking on a different window's reset
+ * would re-attempt into the same cap.
+ */
 export const earliestReset = (usages: ReadonlyArray<MemberUsage | undefined>, now: Date): Date | undefined => {
   let earliest: number | undefined
   for (const usage of usages) {
     if (!usage || usage.status !== "ok") continue
     for (const w of usage.limits) {
-      if (!w.resetsAt) continue
+      const blocking = w.limitReached === true || w.allowed === false
+      if (!blocking || !w.resetsAt) continue
       const at = Date.parse(w.resetsAt)
       if (!Number.isFinite(at) || at <= now.getTime()) continue
       if (earliest === undefined || at < earliest) earliest = at

@@ -47,20 +47,22 @@ export const activeFailures = (
   records: ReadonlyArray<FailureRecord>,
   now: Date,
   ttlMinutes: number,
+  taskKey?: string | undefined,
 ): ReadonlySet<string> => {
   const cutoff = now.getTime() - ttlMinutes * 60_000
   const active = new Set<string>()
   for (const record of records) {
     if (record.class !== "deterministic") continue
+    // Rejection memory is scoped to the task signature that triggered it. A
+    // malformed prompt on one issue says nothing about the account's fitness
+    // for every other issue, so without a matching key the record is ignored.
+    if (taskKey !== undefined && record.taskKey !== taskKey) continue
     const at = Date.parse(record.at)
     if (!Number.isFinite(at) || at < cutoff) continue
     active.add(record.memberId)
   }
   return active
 }
-
-export const failureKey = (companyId: string, taskKey: string, memberId: string) =>
-  `${companyId}\u0000${taskKey}\u0000${memberId}`
 
 /** State keys are company partitioned, because a worker serves many companies. */
 export const decisionsKey = (companyId: string) => `decisions:${companyId}`

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { activeFailures, failureKey, pushDecision, type DecisionRecord, type FailureRecord } from "../src/core/store.js"
+import { activeFailures, pushDecision, type DecisionRecord, type FailureRecord } from "../src/core/store.js"
 
 const decision = (at: string): DecisionRecord => ({
   at,
@@ -41,7 +41,9 @@ describe("failure memory", () => {
     expect(activeFailures([record({ class: "outage" })], now, 30).size).toBe(0)
   })
 
-  it("partitions by company", () => {
-    expect(failureKey("a", "t", "m")).not.toBe(failureKey("b", "t", "m"))
+  it("ignores a failure recorded for a different task", () => {
+    const now = new Date("2026-11-05T00:05:00Z")
+    expect(activeFailures([record({ taskKey: "other" })], now, 30, "iss_1").size).toBe(0)
+    expect(activeFailures([record({ taskKey: "iss_1" })], now, 30, "iss_1").has("m1")).toBe(true)
   })
 })

@@ -30,6 +30,7 @@ const plugin = definePlugin({
         typeof payload.issueId === "string" ? payload.issueId : undefined,
         typeof payload.error === "string" ? payload.error : undefined,
         typeof payload.errorCode === "string" ? payload.errorCode : undefined,
+        event.occurredAt,
       )
     })
   },
@@ -44,6 +45,7 @@ const plugin = definePlugin({
         companyId: request.companyId,
         agentId: request.agentId,
         taskKey: request.taskKey,
+        now: request.now,
         request: {
           pinnedMemberId: request.pinnedMemberId,
           memberOrder: request.memberOrder,
