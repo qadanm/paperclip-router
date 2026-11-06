@@ -25,6 +25,7 @@ const manifest: PaperclipPluginManifestV1 = {
     "plugin.state.read",
     "plugin.state.write",
     "ui.page.register",
+    "ui.sidebar.register",
   ],
   aiConnectionRouter: {
     name: "Smart Router pool",
@@ -94,6 +95,15 @@ const manifest: PaperclipPluginManifestV1 = {
         displayName: "Smart Router",
         exportName: "RouterDecisionsPage",
         routePath: "router",
+      },
+      {
+        // A page has a URL but no navigation entry on its own. This slot is the
+        // sidebar link, so the page is reachable from where a person works.
+        type: "sidebar",
+        id: "router-sidebar-entry",
+        displayName: "Smart Router",
+        exportName: "RouterSidebarEntry",
+        order: 60,
       },
     ],
   },

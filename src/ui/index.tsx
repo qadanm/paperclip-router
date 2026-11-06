@@ -6,6 +6,8 @@ import { DecisionsView, type DecisionsPayload } from "./decisions.js"
  * must be exported exactly as `RouterDecisionsPage`. Data comes from the
  * worker's `decisions` handler, scoped to the current company.
  */
+export { RouterSidebarEntry } from "./sidebar-entry.js"
+
 export function RouterDecisionsPage({ context }: PluginPageProps) {
   const { data, loading, error } = usePluginData<DecisionsPayload>("decisions", { companyId: context.companyId })
   if (loading) return <p style={{ fontFamily: "system-ui, sans-serif", color: "#9a9aa6", padding: 24 }}>Loading decisions…</p>

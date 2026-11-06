@@ -10,6 +10,7 @@ describe("plugin manifest", () => {
       "plugin.state.read",
       "plugin.state.write",
       "ui.page.register",
+      "ui.sidebar.register",
     ])
   })
 
@@ -26,6 +27,12 @@ describe("plugin manifest", () => {
       exportName: "RouterDecisionsPage",
       routePath: "router",
     })
+  })
+
+  it("adds a sidebar entry so the page is reachable", () => {
+    const sidebar = manifest.ui?.slots?.find((slot) => slot.type === "sidebar")
+    expect(sidebar).toBeDefined()
+    expect(sidebar!.exportName).toBe("RouterSidebarEntry")
   })
 
   it("builds for Paperclip 1 and Node 24", () => {
