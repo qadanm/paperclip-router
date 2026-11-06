@@ -20,11 +20,11 @@ Paperclip ships rotation. This replaces it with a decision.
 
 Every decision lands on a **Smart Router** page inside Paperclip:
 
-- **Members**, first, because that is the question a person actually asks. Each member's model, how many decisions it has served, when it last served one, and whether it is ready or held back right now, with the time it becomes eligible again.
-- **Decisions**, newest first. The member that was chosen with its model, the task tier and how confident that read was, a plain sentence for every member passed over, and any deviation worth stating.
-- **Repair.** Records written before this version added labels and confidence are enriched at read time from newer records, so the page never shows a raw id. Nothing in storage is rewritten.
+- **Pool standing** first, because a held-back member is the only thing here that is actionable. Each account's model, its standing, how many decisions it has served, its share of them, and when it was last used, with the time it becomes eligible again.
+- **Decisions** newest first, led by the task that was routed rather than the model that answered it, because the task is what a person recognises. Each row expands in place to show the member that was chosen, the task tier and how confident that read was, a plain sentence for every member passed over, and any deviation worth stating.
+- **Repair.** Records written before titles, labels, and confidence were stored are enriched at read time from the host, so the page never shows a raw id or a bare UUID where a task name belongs. Nothing in storage is rewritten.
 
-It follows the host theme, light or dark, by reading Paperclip's own CSS tokens.
+It follows the host theme, light or dark, by reading Paperclip's own CSS tokens. The logo is the product's real mark, and its colors are picked per theme against measured contrast so it stays legible on both.
 
 The page is the product. If the router cannot explain a choice, the choice should not be made.
 
