@@ -83,10 +83,11 @@ export const rankCandidates = (input: RankingInput): RankingResult => {
       skipped[candidate.memberId] = usage.notes.join("; ")
       continue
     }
-    // Higher score wins. Model fit dominates, then cheap windows. Ties rotate
-    // from lastMemberId, because pinning already handles session continuity and
-    // a new task should spread across accounts.
-    const tierScore = (tier - floor) * 2
+    // Higher score wins. Model fit dominates: the closest qualifying tier wins,
+    // so a mechanical task does not burn a frontier account just because it can.
+    // Ties then go to cheaper windows, then rotate from lastMemberId, because
+    // pinning already handles session continuity.
+    const tierScore = -(tier - floor) * 2
     const usageScore = (1 - Math.min(1.5, usage.pressure)) * policy.expiryWeight
     const orderIndex = order.indexOf(candidate.memberId)
     scored.push({ memberId: candidate.memberId, score: tierScore + usageScore, order: orderIndex < 0 ? order.length : orderIndex })
