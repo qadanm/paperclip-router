@@ -6,7 +6,7 @@ export interface Candidate {
   /** The effective model for this run: the composer override when present, else the member default. */
   readonly model: string
   readonly provider: string
-  readonly usage?: MemberUsage
+  readonly usage?: MemberUsage | undefined
 }
 
 export interface RankingPolicy {

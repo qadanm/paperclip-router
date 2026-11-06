@@ -16,7 +16,7 @@ import { assessUsage, earliestReset } from "./windows.js"
  *   spots.
  */
 export interface RouteRequest {
-  readonly pinnedMemberId?: string
+  readonly pinnedMemberId?: string | undefined
   readonly candidates: ReadonlyArray<Candidate>
   readonly memberOrder: readonly string[]
   readonly lastMemberId: string | null

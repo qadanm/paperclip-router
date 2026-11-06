@@ -18,8 +18,8 @@ export interface TaskClass {
 
 export interface ClassifierInput {
   readonly title: string
-  readonly description?: string
-  readonly labels?: readonly string[]
+  readonly description?: string | undefined
+  readonly labels?: readonly string[] | undefined
 }
 
 const architectureTerms =

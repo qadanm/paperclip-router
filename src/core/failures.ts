@@ -35,7 +35,7 @@ const outagePatterns: ReadonlyArray<RegExp> = [
   /econnreset|econnrefused|socket hang up/i,
 ]
 
-export const classifyRunError = (input: { error?: string | null; errorCode?: string | null }): FailureClass => {
+export const classifyRunError = (input: { error?: string | null | undefined; errorCode?: string | null | undefined }): FailureClass => {
   const text = `${input.error ?? ""} ${input.errorCode ?? ""}`.trim()
   if (!text) return "other"
   if (deterministicPatterns.some((pattern) => pattern.test(text))) return "deterministic"
